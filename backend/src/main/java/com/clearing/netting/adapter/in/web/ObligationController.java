@@ -1,7 +1,9 @@
 package com.clearing.netting.adapter.in.web;
 
 import com.clearing.netting.adapter.in.web.auth.AuthContext;
+import com.clearing.netting.adapter.in.web.auth.AuthUser;
 import com.clearing.netting.application.ObligationApplicationService;
+import com.clearing.netting.domain.model.AmountRevision;
 import com.clearing.netting.domain.model.ObligationStatus;
 import com.clearing.netting.domain.model.TradeObligation;
 import jakarta.validation.Valid;
@@ -10,6 +12,8 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -17,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -52,6 +57,48 @@ public class ObligationController {
                 request.amount(),
                 request.tradeDate(),
                 request.settleDate()));
+    }
+
+    @PatchMapping("/{obligationId}/amount")
+    public ObligationResponse reviseAmount(
+            @PathVariable String obligationId,
+            @Valid @RequestBody ReviseAmountRequest request) {
+        AuthContext.requireOperator();
+        AuthUser user = AuthContext.require();
+        return ObligationResponse.from(
+                obligationService.reviseAmount(obligationId, request.amount(), user.username()));
+    }
+
+    @GetMapping("/{obligationId}/revisions")
+    public List<AmountRevisionResponse> revisions(@PathVariable String obligationId) {
+        AuthContext.require();
+        return obligationService.listRevisions(obligationId).stream()
+                .map(AmountRevisionResponse::from)
+                .collect(Collectors.toList());
+    }
+
+    public record ReviseAmountRequest(
+            @NotNull(message = "amount is required")
+            @DecimalMin(value = "0.00000001", message = "amount must be positive")
+            BigDecimal amount) {
+    }
+
+    public record AmountRevisionResponse(
+            String revisionId,
+            String obligationId,
+            BigDecimal oldAmount,
+            BigDecimal newAmount,
+            String operator,
+            Instant revisedAt) {
+        static AmountRevisionResponse from(AmountRevision r) {
+            return new AmountRevisionResponse(
+                    r.getRevisionId(),
+                    r.getObligationId(),
+                    r.getOldAmount(),
+                    r.getNewAmount(),
+                    r.getOperator(),
+                    r.getRevisedAt());
+        }
     }
 
     public record CreateObligationRequest(

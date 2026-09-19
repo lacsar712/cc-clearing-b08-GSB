@@ -1,7 +1,7 @@
 <template>
   <div class="page">
     <h2 class="page-title">义务录入</h2>
-    <p class="page-desc">录入应付义务并按币种/交割日/状态筛选</p>
+    <p class="page-desc">录入应付义务并按币种/交割日/状态筛选；仅 OPEN 义务可由操作员修订金额，每次修订留存变更痕迹</p>
 
     <div class="card-panel" style="margin-bottom:16px">
       <el-form :model="form" label-width="110px" @submit.prevent>
@@ -59,7 +59,29 @@
     </div>
 
     <div class="card-panel">
-      <el-table :data="rows" v-loading="loading" stripe>
+      <el-table ref="tableRef" :data="rows" v-loading="loading" stripe row-key="obligationId"
+                @expand-change="onExpandChange">
+        <el-table-column type="expand">
+          <template #default="{ row }">
+            <div style="padding:8px 24px">
+              <strong>金额变更记录</strong>
+              <div v-loading="revisionsLoading[row.obligationId]" style="margin-top:8px">
+                <el-table :data="revisionsMap[row.obligationId] || []" size="small" border>
+                  <el-table-column prop="oldAmount" label="旧金额" width="160" />
+                  <el-table-column prop="newAmount" label="新金额" width="160" />
+                  <el-table-column prop="operator" label="操作员" width="160" />
+                  <el-table-column label="变更时间" min-width="220">
+                    <template #default="{ row: r }">{{ formatTime(r.revisedAt) }}</template>
+                  </el-table-column>
+                </el-table>
+                <el-text v-if="!(revisionsLoading[row.obligationId]) && !(revisionsMap[row.obligationId] || []).length"
+                         type="info" size="small" style="display:inline-block;margin-top:6px">
+                  暂无金额变更记录
+                </el-text>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column prop="obligationId" label="义务 ID" min-width="200">
           <template #default="{ row }"><span class="mono">{{ row.obligationId }}</span></template>
         </el-table-column>
@@ -77,8 +99,33 @@
             <el-tag>{{ row.status }}</el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="操作" width="130" fixed="right">
+          <template #default="{ row }">
+            <el-button v-if="auth.isOperator && row.status === 'OPEN'"
+                       link type="primary" @click="openEdit(row)">修改金额</el-button>
+            <el-text v-else type="info" size="small">不可修改</el-text>
+          </template>
+        </el-table-column>
       </el-table>
     </div>
+
+    <el-dialog v-model="editVisible" title="修订义务金额" width="420px" @closed="resetForm">
+      <el-form ref="editFormRef" :model="editForm" :rules="editRules" label-width="90px" @submit.prevent>
+        <el-form-item label="义务 ID">
+          <span class="mono">{{ editForm.obligationId }}</span>
+        </el-form-item>
+        <el-form-item label="当前金额">
+          <span>{{ editForm.oldAmount }} {{ editForm.currency }}</span>
+        </el-form-item>
+        <el-form-item label="新金额" prop="amountText">
+          <el-input v-model="editForm.amountText" placeholder="请输入正数，最多 8 位小数" clearable />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editVisible = false">取消</el-button>
+        <el-button type="primary" :loading="savingRevision" @click="submitRevision">确认修改</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -94,6 +141,40 @@ const rows = ref([])
 const loading = ref(false)
 const saving = ref(false)
 const today = new Date().toISOString().slice(0, 10)
+
+const tableRef = ref()
+const revisionsMap = reactive({})
+const revisionsLoading = reactive({})
+
+const editVisible = ref(false)
+const savingRevision = ref(false)
+const editFormRef = ref()
+const editForm = reactive({
+  obligationId: '',
+  currency: '',
+  oldAmount: '',
+  amountText: ''
+})
+
+const editRules = {
+  amountText: [
+    { required: true, message: '金额不能为空', trigger: 'blur' },
+    {
+      trigger: 'blur',
+      validator: (_rule, value, callback) => {
+        const text = String(value ?? '').trim()
+        if (!/^\d+(\.\d{1,8})?$/.test(text)) {
+          return callback(new Error('金额格式错误：请输入正数，最多 8 位小数'))
+        }
+        const n = Number(text)
+        if (!Number.isFinite(n) || n <= 0) {
+          return callback(new Error('金额必须为大于 0 的正数'))
+        }
+        callback()
+      }
+    }
+  ]
+}
 
 const form = reactive({
   payerMemberId: '',
@@ -115,6 +196,12 @@ const memberMap = computed(() => Object.fromEntries(members.value.map((m) => [m.
 
 function nameOf(id) {
   return memberMap.value[id] || id
+}
+
+function formatTime(instant) {
+  if (!instant) return ''
+  const d = new Date(instant)
+  return Number.isNaN(d.getTime()) ? instant : d.toLocaleString()
 }
 
 async function loadMembers() {
@@ -144,6 +231,61 @@ async function create() {
     await load()
   } finally {
     saving.value = false
+  }
+}
+
+function openEdit(row) {
+  editForm.obligationId = row.obligationId
+  editForm.currency = row.currency
+  editForm.oldAmount = row.amount
+  editForm.amountText = String(row.amount)
+  editVisible.value = true
+}
+
+function resetForm() {
+  editFormRef.value?.clearValidate()
+}
+
+async function submitRevision() {
+  const valid = await editFormRef.value.validate().catch(() => false)
+  if (!valid) return
+  savingRevision.value = true
+  try {
+    const { data } = await api.patch(
+      `/obligations/${editForm.obligationId}/amount`,
+      // send as string to preserve exact decimal precision when binding to BigDecimal
+      { amount: editForm.amountText.trim() }
+    )
+    ElMessage.success('金额已修订，变更记录已留存')
+    editVisible.value = false
+    // 列表立即反映新金额
+    const idx = rows.value.findIndex((r) => r.obligationId === data.obligationId)
+    if (idx >= 0) rows.value[idx] = data
+    // 已展开过的变更痕迹立即刷新
+    if (revisionsMap[editForm.obligationId]) {
+      await loadRevisions(editForm.obligationId)
+    }
+  } finally {
+    savingRevision.value = false
+  }
+}
+
+async function loadRevisions(obligationId) {
+  revisionsLoading[obligationId] = true
+  try {
+    const { data } = await api.get(`/obligations/${obligationId}/revisions`)
+    revisionsMap[obligationId] = data
+  } finally {
+    revisionsLoading[obligationId] = false
+  }
+}
+
+async function onExpandChange(row, expandedRows) {
+  const expanded = Array.isArray(expandedRows)
+    ? expandedRows.some((r) => r.obligationId === row.obligationId)
+    : !!expandedRows
+  if (expanded && !revisionsMap[row.obligationId]) {
+    await loadRevisions(row.obligationId)
   }
 }
 

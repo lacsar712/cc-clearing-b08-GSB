@@ -78,6 +78,25 @@ class MultilateralNettingServiceTest {
         assertEquals("MIXED_CURRENCY", ex.getCode());
     }
 
+    @Test
+    void usesRevisedAmountsForNets() {
+        // Same triangle as conservationHoldsForTriangle but A->B is revised from 100 to 150
+        TradeObligation ab = obligation("A", "B", "100");
+        TradeObligation bc = obligation("B", "C", "60");
+        TradeObligation ca = obligation("C", "A", "40");
+        ab.reviseAmount(new BigDecimal("150"));
+
+        List<NetPosition> positions = service.net("run-1r", "USD", List.of(ab, bc, ca),
+                Map.of("A", a, "B", b, "C", c));
+
+        Map<String, BigDecimal> byMember = positions.stream()
+                .collect(java.util.stream.Collectors.toMap(NetPosition::getMemberId, NetPosition::getNetAmount));
+        // A: -150 + 40 = -110; B: +150 - 60 = +90; C: +60 - 40 = +20
+        assertEquals(0, byMember.get("A").compareTo(new BigDecimal("-110.00000000")));
+        assertEquals(0, byMember.get("B").compareTo(new BigDecimal("90.00000000")));
+        assertEquals(0, byMember.get("C").compareTo(new BigDecimal("20.00000000")));
+    }
+
     private TradeObligation obligation(String payer, String payee, String amount) {
         return new TradeObligation(
                 java.util.UUID.randomUUID().toString(),

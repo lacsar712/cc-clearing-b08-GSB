@@ -1,5 +1,7 @@
 package com.clearing.netting.domain.model;
 
+import com.clearing.netting.domain.exception.DomainException;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -11,10 +13,10 @@ public class TradeObligation {
     private final String payerMemberId;
     private final String payeeMemberId;
     private final String currency;
-    private final BigDecimal amount;
     private final LocalDate tradeDate;
     private final LocalDate settleDate;
     private ObligationStatus status;
+    private BigDecimal amount;
     private String nettingRunId;
 
     public TradeObligation(
@@ -61,6 +63,25 @@ public class TradeObligation {
                 settleDate,
                 ObligationStatus.OPEN,
                 null);
+    }
+
+    /**
+     * Revise the amount of an OPEN obligation. Only OPEN obligations can be revised;
+     * NETTED/SETTLED/CANCELLED are immutable. The new amount must be strictly positive.
+     * Returns the old amount so the caller can persist an auditable change record.
+     */
+    public BigDecimal reviseAmount(BigDecimal newAmount) {
+        if (status != ObligationStatus.OPEN) {
+            throw new DomainException("INVALID_STATE",
+                    "only OPEN obligations can be revised, current status: " + status);
+        }
+        if (newAmount == null || newAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new DomainException("INVALID_AMOUNT", "amount must be a positive number");
+        }
+        BigDecimal normalized = newAmount.setScale(8, RoundingMode.HALF_UP);
+        BigDecimal old = this.amount;
+        this.amount = normalized;
+        return old;
     }
 
     public void markNetted(String runId) {

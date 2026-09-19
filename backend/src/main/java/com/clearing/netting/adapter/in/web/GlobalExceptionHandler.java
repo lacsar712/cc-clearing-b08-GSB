@@ -3,6 +3,7 @@ package com.clearing.netting.adapter.in.web;
 import com.clearing.netting.adapter.in.web.dto.ErrorResponse;
 import com.clearing.netting.domain.exception.DomainException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -28,6 +29,12 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(ErrorResponse.of("VALIDATION_ERROR", "validation failed", details));
     }
 
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleUnreadable(HttpMessageNotReadableException ex) {
+        return ResponseEntity.badRequest()
+                .body(ErrorResponse.of("VALIDATION_ERROR", "malformed request body or invalid number format"));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleOther(Exception ex) {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -38,7 +45,8 @@ public class GlobalExceptionHandler {
         return switch (code) {
             case "AUTH_FAILED", "UNAUTHORIZED" -> HttpStatus.UNAUTHORIZED;
             case "FORBIDDEN" -> HttpStatus.FORBIDDEN;
-            case "MEMBER_NOT_FOUND", "RUN_NOT_FOUND" -> HttpStatus.NOT_FOUND;
+            case "MEMBER_NOT_FOUND", "RUN_NOT_FOUND", "OBLIGATION_NOT_FOUND" -> HttpStatus.NOT_FOUND;
+            case "INVALID_STATE" -> HttpStatus.CONFLICT;
             default -> HttpStatus.BAD_REQUEST;
         };
     }
