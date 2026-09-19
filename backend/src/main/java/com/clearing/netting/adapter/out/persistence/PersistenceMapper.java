@@ -4,10 +4,12 @@ import com.clearing.netting.adapter.out.persistence.entity.MemberJpaEntity;
 import com.clearing.netting.adapter.out.persistence.entity.NetPositionJpaEntity;
 import com.clearing.netting.adapter.out.persistence.entity.NettingRunJpaEntity;
 import com.clearing.netting.adapter.out.persistence.entity.ObligationJpaEntity;
+import com.clearing.netting.adapter.out.persistence.entity.ObligationRevisionJpaEntity;
 import com.clearing.netting.adapter.out.persistence.entity.UserJpaEntity;
 import com.clearing.netting.domain.model.Member;
 import com.clearing.netting.domain.model.NetPosition;
 import com.clearing.netting.domain.model.NettingRun;
+import com.clearing.netting.domain.model.ObligationAmountRevision;
 import com.clearing.netting.domain.model.TradeObligation;
 import com.clearing.netting.domain.model.UserAccount;
 
@@ -52,6 +54,27 @@ final class PersistenceMapper {
         e.setSettleDate(o.getSettleDate());
         e.setStatus(o.getStatus());
         e.setNettingRunId(o.getNettingRunId());
+        return e;
+    }
+
+    static ObligationAmountRevision toDomain(ObligationRevisionJpaEntity e) {
+        return new ObligationAmountRevision(
+                e.getRevisionId(),
+                e.getObligationId(),
+                e.getOldAmount(),
+                e.getNewAmount(),
+                e.getOperator(),
+                e.getRevisedAt());
+    }
+
+    static ObligationRevisionJpaEntity toEntity(ObligationAmountRevision r) {
+        ObligationRevisionJpaEntity e = new ObligationRevisionJpaEntity();
+        e.setRevisionId(r.getRevisionId());
+        e.setObligationId(r.getObligationId());
+        e.setOldAmount(r.getOldAmount());
+        e.setNewAmount(r.getNewAmount());
+        e.setOperator(r.getOperator());
+        e.setRevisedAt(r.getRevisedAt());
         return e;
     }
 

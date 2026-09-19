@@ -46,10 +46,11 @@ docker compose down
 2. 首页查看 seed 灌入的待轧差义务摘要与最近批次
 3. 「会员」页确认演示会员为 ACTIVE；可新建或启停
 4. 「义务」页筛选 OPEN 义务，或新建一笔同币种义务
-5. 「轧差执行」选择 settleDate + currency（如 USD），执行轧差
-6. 确认净头寸表 ΣnetAmount = 0，批次状态 COMPLETED
-7. 进入批次详情，点击 Settle，义务变为 SETTLED
-8. 使用 `viewer` 登录，确认只能浏览、无法执行写操作
+5. 「义务」页对一笔 OPEN 义务点击「修改金额」，改为新值（如 100000 → 130000）；列表立即更新，点「变更记录」可查看旧值/新值/操作员/时间
+6. 「轧差执行」选择同一 settleDate + currency（如 USD），再次执行轧差，净头寸按新金额计算且 ΣnetAmount = 0
+7. 已 NETTED/SETTLED/CANCELLED 的义务无「修改金额」入口，直接调用 `PUT /api/obligations/{id}/amount` 也会被拒绝
+8. 进入批次详情，点击 Settle，义务变为 SETTLED
+9. 使用 `viewer` 登录，确认只能浏览、无修改入口，无法执行写操作
 
 健康检查：
 

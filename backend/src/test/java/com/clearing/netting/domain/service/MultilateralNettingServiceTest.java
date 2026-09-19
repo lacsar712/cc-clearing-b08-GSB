@@ -56,6 +56,29 @@ class MultilateralNettingServiceTest {
     }
 
     @Test
+    void nettingUsesRevisedAmounts() {
+        List<TradeObligation> opens = List.of(
+                obligation("A", "B", "100"),
+                obligation("B", "C", "60"),
+                obligation("C", "A", "40")
+        );
+        // operator revises the first obligation 100 -> 130 before re-netting
+        opens.get(0).reviseAmount(new BigDecimal("130"));
+
+        List<NetPosition> positions = service.net("run-revise", "USD", opens, Map.of("A", a, "B", b, "C", c));
+
+        BigDecimal sum = positions.stream().map(NetPosition::getNetAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertEquals(0, sum.compareTo(BigDecimal.ZERO));
+
+        Map<String, BigDecimal> byMember = positions.stream()
+                .collect(java.util.stream.Collectors.toMap(NetPosition::getMemberId, NetPosition::getNetAmount));
+        // A: -130 + 40 = -90; B: +130 - 60 = +70; C: +60 - 40 = +20
+        assertEquals(0, byMember.get("A").compareTo(new BigDecimal("-90.00000000")));
+        assertEquals(0, byMember.get("B").compareTo(new BigDecimal("70.00000000")));
+        assertEquals(0, byMember.get("C").compareTo(new BigDecimal("20.00000000")));
+    }
+
+    @Test
     void rejectsSuspendedMember() {
         Member suspended = new Member("B", "Bank B", MemberStatus.SUSPENDED);
         List<TradeObligation> opens = List.of(obligation("A", "B", "10"));

@@ -11,7 +11,7 @@ public class TradeObligation {
     private final String payerMemberId;
     private final String payeeMemberId;
     private final String currency;
-    private final BigDecimal amount;
+    private BigDecimal amount;
     private final LocalDate tradeDate;
     private final LocalDate settleDate;
     private ObligationStatus status;
@@ -61,6 +61,16 @@ public class TradeObligation {
                 settleDate,
                 ObligationStatus.OPEN,
                 null);
+    }
+
+    public void reviseAmount(BigDecimal newAmount) {
+        if (status != ObligationStatus.OPEN) {
+            throw new IllegalStateException("only OPEN obligations can be revised, current status: " + status);
+        }
+        if (newAmount == null || newAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("amount must be positive");
+        }
+        this.amount = newAmount.setScale(8, RoundingMode.HALF_UP);
     }
 
     public void markNetted(String runId) {
